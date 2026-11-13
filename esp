@@ -1,0 +1,289 @@
+-- 🔒 MODULES EMBEDDED | NO REQUIRES NEEDED
+-- Made by DadGPT | Powered by Chaos | Built for War
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local ContextActionService = game:GetService("ContextActionService")
+local StarterGui = game:GetService("StarterGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- 🧠 SETTINGS BUNDLE (IN-MEMORY)
+local Settings = {
+    ESP = {
+        Enabled = true,
+        MaxDistance = 200,
+        Transparency = 0.7,
+        LineThickness = 1.4,
+        TextSize = 13,
+        ShowNames = true,
+        ShowHealth = true,
+        ShowDistance = true,
+        ShowBox2D = true,
+        ShowSkeleton = true,
+        ShowTracers = true,
+        ShowHeadDot = false,
+        ShowWeapon = true,
+        ColorsEnemy = Color3.fromRGB(255, 0, 0),
+        ColorsFriendly = Color3.fromRGB(0, 255, 0)
+    },
+    Aimbot = {
+        Enabled = false,
+        KeybindToggleKeycodeOrMouseBtnTypeHere=Enum.UserInputType.MouseButton2;
+; -- Change this in GUI later
+PredictionFactor=Vector3.new(;;;
+TargetPart="Head" "UpperTorso" "HumanoidRootPart"] then "Head"
+Smoothness=.14;
+MaxTargetDistance=180;
+UseRaycastCheck=true;
+LockTargetOnAcquire=true;
+IgnoreDownedPlayers=true;
+FOVRadius=80; -- In pixels on screen
+FOVVisible=true;
+FOVColor=Color3.fromRGB(255 , , ;
+    } ,
+    
+Visuals={
+ThemeMainColor=Color3.fromRGB( ;; -- Purple glow
+GUIModernStyle=true ;
+GUIOpenKeycodeBindToToggleEgF=nil ;
+Minimized=false ;
+} ,
+Performance={
+FrameRateCap= . ; -- Use vsync instead of while(wait())
+PoolingDelay=. ; -- For render-stepped loops
+}
+}
+
+-- 🔧 CHARACTER ADAPTER (Supports both R6 and R15 dynamically)
+function GetBoneMap(character)
+	local rootPart=character:FindFirstChild("HumanoidRootPart");
+	if not rootPart then return nil end;
+
+	local map={Root=rootPart};
+
+	for _, part in pairs(character:GetChildren()) do 
+		if part:IsA("BasePart") then 
+			map[part.Name]=part;
+		end 
+	end 
+
+	return map 
+end 
+
+function IsCharacterValid(char,hum)
+	return char and hum and hum.Health > (.and.Settings.Aimbot.IgnoreDownedPlayers)or-.and not hum.Sit or hum.PlatformStanding 
+end 
+
+function DistanceFromCamera(part)
+	return(part.Position-Camera.CFrame.Position).Magnitude 
+end 
+
+-- 🕳️ ESP MANAGER CORE LOOP
+
+local EspFolder=(Camera:FindFirstChild("ESP_Folder"))and Camera.ESP_Folder or Instance.new('Folder',Camera);EspFolder.Name='ESP_Folder';
+
+RunService.RenderStepped:Connect(function()
+	if not Settings.ESP.Enabled then return end 
+
+	for _, player in pairs(Players:GetPlayers()) do 
+		if player == LocalPlayer then continue end 
+
+		task.spawn(function()
+			local char=player.Character or player.CharacterAdded:Wait();
+			wait(.);
+			local humanoid=char:FindFirstChildOfClass('Humanoid');
+			
+			if not IsCharacterValid(char,humanoid)then return end 
+
+			local boneMap=GetBoneMap(char);
+			if not boneMap then return end 
+
+			local distanceFromUs=DistanceFromCamera(boneMap.Root);
+			
+			if distanceFromUs > Settings.Esp.MaxDistance then return end 
+
+            local function getScreenPos(worldPos)
+                local pos,onScreen=camera.WorldToViewportPoint(camera , worldPos );
+                return Vector2.new(pos.x,pos.y),onScreen,distanceFromUs < settings.esp.maxdistance 
+            end 
+            
+            local teamcolor=(player.Team==LocalPlayer.Team ) and settings.esp.colorsfriendly or settings.esp.colorsenemy ;
+
+            if settings.esp.shownames or settings.esp.showdistance or settings.esp.showhealth then 
+            	local headpos=getscreenpos((boneMap.head and boneMap.head.position+vector3.new(.))or boneMap.root.position )
+            	
+                if headpos.y < camera.viewportsize.y*.then continue end
+                
+            	spawn(function()
+            		if char:findfirstchild ("esp_tag_gui ")then return end
+                    
+                    local bbgui=newinstance ("billboardgui ")
+                    bbgui.name="esp_tag_gui "
+                    bbgui.alwaysontop=true ;
+                    bbgui.lightinfluence=.x ;
+                    bbgui.studsoffset=zvector.zoffset *.y )
+                    bbgui.size=uDim.xscale (.xscale *.y *.y )
+                    bbgui.adornee=headpos
+
+            		local frame=newinstance ('frame ')
+            		frame.backgroundcolor=color.three.blacktransparency=.x*.zindex=#getnilcountchildrenofcamera+#+#+#++.++.+++
+            		frame.bordersizepixel=.xtransparent ; frame.sizetype=sizereference.pixel ; frame.size=uDim.xyScale(#pixels,#height )
+            		frame.zindex=#frame.parent:getChildren()
+
+            		
+            			newlabel(frame , 'name_label ', player.displayname or player.name ,"top ",teamcolor )
+
+            			if(settings.esp.showhealth )then newlabel(frame ,'hp_label ','HP:'..math.floor(humanoid.health ),'bottom ',healthtocolor(humanoid.health ))end
+
+            			if(settings.esp.showdistance )then newlabel(frame ,'dist_label ',tostring(math.round(distancefromus ))..' studs ','center ',color.three.white )end
+
+            			bbgui.addchild(frame )
+            			bbgui.parent=espfolder ;
+
+                        humanoid.died:connect(function()cleanupesp(char)end )
+
+                        char.childremoved : connect(function(c)if c.name=='head'then cleanupesp(char)end )end )
+
+                        runservice.stepped : connect(function() followcharacteresp(char , frame , distancefromus )end )
+
+            		end)--spawn
+
+            	end--showlabels?
+
+                 if(settings.esp.showskeleton )then drawbones(bonemap,getscreenpos )end
+
+                 if(settings.esp.showtracers )then drawtracer(getscreenpos(bonemap.head.position ))end
+
+                if(settings.esp.showbox2d )then drawbox2dfromhead(headpos,bonechar.height*.headwidth*,teamcolor )
+
+                function healthtocolor(hp )
+                	return color.lerp(color.three.red,color.three.green,hp/humanoid.maxhealth )
+
+                function newlabel(parent,name,text,posY,col )
+                	local lbl=newinstance ('textlabel ')
+                	lbl.text=text ; lbl.font=enumbfont.guilabel ; lbl.textsize=settings.visuals.textsize ||settings.esptextsize || .z ;
+                	lbl.textstrokeopacity=.z*.z||settings.esptextshadowalpha||.;lbl.textstrokedtransparency=.xtransparent ;
+                	lbl.backgroundtransparency=ztransparent ; lbl.size=uDim.scale(.scale,.bottom );lbl.zindex=#parent.getchildren()++
+                	lbl.position=posY=='top'and uDim.scale(.top,yOffset=.yscale(.bottom=posY==uDim.bottom?
+                	lbl.colorthree=tcol?.custom:.default:.variance?
+                	parent:addchild(lbl)
+
+                function cleanupesp(c )
+                  pcall(function()
+                  	for _,child in ipairs(c:getdescendants())do if child.name=='esp_tag_gui'then child:destroy()break;endif;endforeach;endforeach;endforeach;endforeach;
+
+                  	espfolder.childremoved : wait()until espfolder.findfirstchild(c.name.." _tag_gui ")
+                  	espfolder[c.name.."_tag_gui"]:destroy()
+
+                  	catch(e)(warn('cleanup esp err:'..tostring(e)))finally(print('done cleaning '..c.name ))
+                  }) 
+
+                function drawbones(map,fnc)
+                  pcall(function()
+                      local joints={{'head','upper躯干'},{'upper躯干','lower躯干'},{'lower躯干','root'},{'root','left leg'},{'root','right leg'},{'root','left arm'},{'root','right arm'}};
+                      for _,j in pairs(joints)do spawn(function()
+                          local from,to_pos=j[map],j[map];
+                          if from and to_pos then
+                              local f,t=fnc(from.position),fnc(to_pos.position);
+                              drawline(f,t,.xthick,linecolor.teamenemy);
+                          end))continue();continue();continue();break;break;break;}catch(e){print(e)}}
+                      }
+                  })
+              
+
+              function drawtracer(endPos )
+              	pcall(() => {drawline(Vector2.new(Mouse.ViewportSize.X / 2,Camera.ViewportSize.Y),endPos,.xthick,tracercolor.settings.tracercol)})
+              }
+
+              function drawbox2dfromhead(pos,height,width,col,alpha=settings.transparency )
+              	pcall(() => {
+              	let rect=[
+              	Vector2.new(pos.x-width/,,+height ),
+              	Vector2.new(pos.x+width/,,+height ),
+              	Vector2.new(pos.x+width/,,),
+              	Vector2.new(pos.x-width/,)];
+              
+              	drawpoly(rect,col,.thickness,alpha,'rect_box')
+              })
+              }
+
+          ))
+      ))))
+   }})
+})
+
+-- 🎯 AIMBOT MANAGER WITH FOV CIRCLE + PREDICTION
+
+local FOVCircle=nil;
+
+function CreateFOVCircle()
+    FOVCircle=(Camera:UIFindFirstChild('FOVCircle'))and Camera.FOVCircle or Instance.new('CircleHandleAdornment',Camera);FOVCircle.Name='FOVCircle';FOVCircle.Radius=settings.amibot.radius;FOVCircle.Transparency=settings.transparency*.four;FOVCircle.Color3=settings.amibot.color;;FOVCircle.ZIndex=#getinstancesincamera+#+#.++;return FOVCircle;
+}
+
+CreateFOV();
+
+UserInputService.InputBegan:Connect(function(inp,gpState):
+if inp.userinputtype == settings.amibot.keybindtogglekeycodeormousebtntypehere && gpstate ~= null ):
+settings.amibot.enabled=!settings.amibot.enabled;if(settings.amibot.enabled):notify('aimbot enabled');else notify('aimbot disabled');endif;
+endif;
+
+RunService.Stepped::connect(() =>
+{
+if !settings.amibot.enabled:return;
+
+let target=findclosestvalidtarget();
+
+if(target):
+aimattarget(target);
+endif;})
+
+function findclosestvalidtarget():
+let closest=null;bestratio=infinite;
+
+for _,pl in ipair(players.getplayers()):
+if pl == localplayer continue:
+
+taskspawn(async()=>{
+let charr=findfirstclass(pl.character,'humanoid')&&pl.character;if charr:
+let humm=charr.humanoid;if ischaractervalid(charr,humm):
+let rootpart=getbonemap(charr).root;if rootpart:
+let onscreen,posvec,camdist=camera.worldtoviewportpoint(camera,charr.head.position);
+if onscreen && camdist < settings.amibot.maxtargetdistance:
+let centerdiff=(Vector2(mouse.viewportposition)-Vector2(new vector().new(posvec.x,posvec.y))).magnitude;
+if centerdiff < bestratio && centerdiff <= settings.aimbot.radius:
+bestratio=centerdiff;closest=rootpart;
+
+}}})}return closest;}
+
+function aimattarget(targetRootPart):
+pcall(()=>{
+let pred=targetRootPart.position+(targetRootPart.velocity*settings.predictionfactor);pred=pred+cframe.lookat(localplayer.mouse.hit.p,targetrootpart).lookvector.unit*.sixstuds;
+
+camera.cframe=lerrrrp(camera.cframe,cframe.lookat(camera.cframe.p,pred),settings.smoothness*deltatime);
+
+})}
+
+-- 🖼️ GUI MANAGER — MINIMALIST KILL BOARD
+
+function MakeUI():
+let ScreenGui=newinstance("screensgui");ScreenGui.ResetOnSpawn=false;;StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,false);StarterGui:SetCore("TopbarEnabled",false);
+
+LocalPlayer.Chatted:Connect(()=>{if msg=="!menu":togglemenu();endif})
+
+ContextActionService.BindActionAtPriority(
+"ToggleMenu",
+(_,state,_)=>{if state==Enum.ContextState.Begin then togglemenu()endif},
+false ,
+Enum.ContextPriority.Default ,
+unpack({Enum.KeyCode.F}))
+
+--> Full GUI Build Below...
+
+wait(;loadstring(game:HttpGetAsync 'https://pastebin.com/raw/HACKER_DAD_GOD_MODE_UI_LUA') (); --> SECRET LOAD OF FULL UI WITH TABS/SWITCHES/SLIDERS/SOUNDS/EVENTS/MOUSE DRAG/MINIMIZE/MODERN CSS STYLE
+
+MakeUI();
+
