@@ -1,0 +1,898 @@
+
+-- ROBLOX STUDIO | ESP + AIM TEST
+-- Optimized R6/R15
+-- RightShift = Menu
+-- Right Mouse = Hold Aim
+-- NPCs: CollectionService tag "TestTarget"
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local CS = game:GetService("CollectionService")
+
+local LP = Players.LocalPlayer
+local PG = LP:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+
+local Config = {
+    ESP = true,
+    Box = true,
+    CornerBox = false,
+    Box3D = false,
+    Chams = true,
+    Skeleton = true,
+    Tracers = true,
+    Names = true,
+    Health = true,
+    Distance = true,
+    Weapon = true,
+    HeadDot = false,
+    ThroughWalls = true,
+
+    MaxDistance = 250,
+    ESPInterval = 1/20,
+    Color = Color3.fromRGB(255, 65, 90),
+
+    FOV = 110,
+    ShowFOV = true,
+    Smoothness = 0.16,
+    Prediction = 0.04,
+    AimDistance = 200,
+    AimPart = "Head",
+    VisibilityCheck = true,
+    TargetLock = true
+}
+
+local old = PG:FindFirstChild("OptimizedESP")
+if old then old:Destroy() end
+
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "OptimizedESP"
+GUI.ResetOnSpawn = false
+GUI.IgnoreGuiInset = true
+GUI.Parent = PG
+
+local function new(class, parent, props)
+    local o = Instance.new(class)
+
+    for k, v in pairs(props or {}) do
+        o[k] = v
+    end
+
+    o.Parent = parent
+    return o
+end
+
+local function round(o, n)
+    new("UICorner", o, {
+        CornerRadius = UDim.new(0, n)
+    })
+end
+
+local overlay = new("Frame", GUI, {
+    BackgroundTransparency = 1,
+    Size = UDim2.fromScale(1, 1)
+})
+
+-- TARGET CACHE
+local targets = {}
+local visuals = {}
+
+local function humanoid(char)
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function root(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function project(p)
+    local v, visible = Camera:WorldToViewportPoint(p)
+    return Vector2.new(v.X, v.Y), visible and v.Z > 0
+end
+
+local function makeLine(parent)
+    return new("Frame", parent, {
+        BorderSizePixel = 0,
+        BackgroundColor3 = Config.Color,
+        Size = UDim2.fromOffset(1, 2),
+        Visible = false
+    })
+end
+
+local function drawLine(f, a, b)
+    local d = b-a
+    f.Position = UDim2.fromOffset(a.X, a.Y)
+    f.Size = UDim2.fromOffset(d.Magnitude, 2)
+    f.Rotation = math.deg(math.atan2(d.Y, d.X))
+    f.BackgroundColor3 = Config.Color
+    f.Visible = true
+end
+
+local function remove(id)
+    local v = visuals[id]
+
+    if v then
+        v.Frame:Destroy()
+        if v.Highlight then v.Highlight:Destroy() end
+        if v.Adornment then v.Adornment:Destroy() end
+        visuals[id] = nil
+    end
+end
+
+local function createVisual(id, char)
+    remove(id)
+
+    local v = {
+        Character = char,
+        Frame = new("Frame", overlay, {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1)
+        }),
+        Lines = {},
+        Bones = {}
+    }
+
+    for i = 1, 12 do
+        v.Lines[i] = makeLine(v.Frame)
+    end
+
+    for i = 1, 14 do
+        v.Bones[i] = makeLine(v.Frame)
+    end
+
+    v.Tracer = makeLine(v.Frame)
+
+    v.Dot = new("Frame", v.Frame, {
+        BackgroundColor3 = Config.Color,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(6, 6),
+        Visible = false
+    })
+    round(v.Dot, 10)
+
+    v.Text = new("TextLabel", v.Frame, {
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextStrokeTransparency = 0.25,
+        Text = "",
+        Size = UDim2.fromOffset(200, 52),
+        Visible = false
+    })
+
+    v.HP = new("Frame", v.Frame, {
+        BorderSizePixel = 0,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+        Visible = false
+    })
+
+    v.HPFill = new("Frame", v.HP, {
+        BorderSizePixel = 0,
+        BackgroundColor3 = Color3.fromRGB(0, 230, 80),
+        Size = UDim2.fromScale(1, 1)
+    })
+
+    v.Highlight = new("Highlight", char, {
+        FillColor = Config.Color,
+        OutlineColor = Config.Color,
+        FillTransparency = 0.7,
+        OutlineTransparency = 0,
+        DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+        Enabled = false
+    })
+
+    local r = root(char)
+
+    if r then
+        v.Adornment = new("BoxHandleAdornment", r, {
+            Adornee = r,
+            Size = Vector3.new(4, 6, 2),
+            Color3 = Config.Color,
+            Transparency = 0.65,
+            AlwaysOnTop = true,
+            Visible = false
+        })
+    end
+
+    visuals[id] = v
+    return v
+end
+
+local function addTarget(id, char, name)
+    if not char or not char:IsA("Model") then return end
+
+    targets[id] = {
+        Character = char,
+        Name = name or char.Name
+    }
+
+    createVisual(id, char)
+end
+
+local function removeTarget(id)
+    targets[id] = nil
+    remove(id)
+end
+
+-- PLAYER CONNECTIONS
+local connections = {}
+
+local function registerPlayer(p)
+    if p == LP then return end
+
+    local id = "P"..p.UserId
+
+    if p.Character then
+        addTarget(id, p.Character, p.DisplayName)
+    end
+
+    connections[p] = p.CharacterAdded:Connect(function(char)
+        addTarget(id, char, p.DisplayName)
+    end)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    registerPlayer(p)
+end
+
+Players.PlayerAdded:Connect(registerPlayer)
+
+Players.PlayerRemoving:Connect(function(p)
+    removeTarget("P"..p.UserId)
+
+    if connections[p] then
+        connections[p]:Disconnect()
+        connections[p] = nil
+    end
+end)
+
+-- NPC CONNECTIONS
+local function addNPC(obj)
+    if obj:IsA("Model") and humanoid(obj) then
+        addTarget(obj, obj, obj.Name)
+    end
+end
+
+for _, obj in ipairs(CS:GetTagged("TestTarget")) do
+    addNPC(obj)
+end
+
+CS:GetInstanceAddedSignal("TestTarget"):Connect(addNPC)
+
+CS:GetInstanceRemovedSignal("TestTarget"):Connect(function(obj)
+    removeTarget(obj)
+end)
+
+-- R6 / R15 SKELETON
+local R6 = {
+    {"Head","Torso"},
+    {"Torso","Left Arm"},
+    {"Torso","Right Arm"},
+    {"Torso","Left Leg"},
+    {"Torso","Right Leg"}
+}
+
+local R15 = {
+    {"Head","UpperTorso"},
+    {"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"},
+    {"LeftUpperArm","LeftLowerArm"},
+    {"LeftLowerArm","LeftHand"},
+    {"UpperTorso","RightUpperArm"},
+    {"RightUpperArm","RightLowerArm"},
+    {"RightLowerArm","RightHand"},
+    {"LowerTorso","LeftUpperLeg"},
+    {"LeftUpperLeg","LeftLowerLeg"},
+    {"LowerTorso","RightUpperLeg"},
+    {"RightUpperLeg","RightLowerLeg"},
+    {"RightLowerLeg","RightFoot"}
+}
+
+local function hide2D(v)
+    for _, l in ipairs(v.Lines) do l.Visible = false end
+    for _, l in ipairs(v.Bones) do l.Visible = false end
+
+    v.Tracer.Visible = false
+    v.Dot.Visible = false
+    v.Text.Visible = false
+    v.HP.Visible = false
+end
+
+local function hideAll(v)
+    hide2D(v)
+    v.Highlight.Enabled = false
+    if v.Adornment then
+        v.Adornment.Visible = false
+    end
+end
+
+local function updateESP(id, data)
+    local char = data.Character
+    local v = visuals[id]
+
+    if not char or not char.Parent then
+        if v then hideAll(v) end
+        return
+    end
+
+    if not v or v.Character ~= char then
+        v = createVisual(id, char)
+    end
+
+    hide2D(v)
+
+    local r = root(char)
+    local h = humanoid(char)
+    local head = char:FindFirstChild("Head")
+
+    if not r or not h or not head then
+        hideAll(v)
+        return
+    end
+
+    local distance = (
+        Camera.CFrame.Position-r.Position
+    ).Magnitude
+
+    local valid = Config.ESP
+        and h.Health > 0
+        and distance <= Config.MaxDistance
+
+    v.Highlight.Enabled = valid and Config.Chams
+    v.Highlight.FillColor = Config.Color
+    v.Highlight.OutlineColor = Config.Color
+    v.Highlight.DepthMode =
+        Config.ThroughWalls
+        and Enum.HighlightDepthMode.AlwaysOnTop
+        or Enum.HighlightDepthMode.Occluded
+
+    if v.Adornment then
+        v.Adornment.Visible = valid and Config.Box3D
+        v.Adornment.Color3 = Config.Color
+        v.Adornment.AlwaysOnTop = Config.ThroughWalls
+    end
+
+    if not valid then return end
+
+    local rp, on = project(r.Position)
+    if not on then return end
+
+    -- 2D box based on character dimensions
+    local cf, size = char:GetBoundingBox()
+    local top, topOn = project(
+        cf.Position + Vector3.new(0, size.Y/2, 0)
+    )
+    local bottom, bottomOn = project(
+        cf.Position - Vector3.new(0, size.Y/2, 0)
+    )
+
+    if not topOn or not bottomOn then return end
+
+    local height = math.abs(bottom.Y-top.Y)
+    local width = math.max(8, height*0.55)
+    local x = rp.X-width/2
+    local y = math.min(top.Y, bottom.Y)
+
+    if Config.Box then
+        local p = {
+            Vector2.new(x,y),
+            Vector2.new(x+width,y),
+            Vector2.new(x+width,y+height),
+            Vector2.new(x,y+height)
+        }
+
+        for i = 1, 4 do
+            drawLine(v.Lines[i], p[i], p[i%4+1])
+        end
+    end
+
+    if Config.CornerBox then
+        local n = math.min(width,height)*0.25
+        local segments = {
+            {x,y,x+n,y},
+            {x,y,x,y+n},
+            {x+width,y,x+width-n,y},
+            {x+width,y,x+width,y+n},
+            {x,y+height,x+n,y+height},
+            {x,y+height,x,y+height-n},
+            {x+width,y+height,x+width-n,y+height},
+            {x+width,y+height,x+width,y+height-n}
+        }
+
+        for i, s in ipairs(segments) do
+            drawLine(
+                v.Lines[i+4],
+                Vector2.new(s[1],s[2]),
+                Vector2.new(s[3],s[4])
+            )
+        end
+    end
+
+    if Config.Tracers then
+        drawLine(
+            v.Tracer,
+            Vector2.new(
+                Camera.ViewportSize.X/2,
+                Camera.ViewportSize.Y
+            ),
+            rp
+        )
+    end
+
+    if Config.HeadDot then
+        local hp, visible = project(head.Position)
+        v.Dot.Visible = visible
+        v.Dot.Position = UDim2.fromOffset(hp.X-3,hp.Y-3)
+        v.Dot.BackgroundColor3 = Config.Color
+    end
+
+    if Config.Skeleton then
+        local bones = char:FindFirstChild("UpperTorso")
+            and R15 or R6
+
+        for i, pair in ipairs(bones) do
+            local a = char:FindFirstChild(pair[1])
+            local b = char:FindFirstChild(pair[2])
+
+            if a and b then
+                local pa, va = project(a.Position)
+                local pb, vb = project(b.Position)
+
+                if va and vb then
+                    drawLine(v.Bones[i], pa, pb)
+                end
+            end
+        end
+    end
+
+    local info = {}
+
+    if Config.Names then
+        info[#info+1] = data.Name
+    end
+
+    if Config.Distance then
+        info[#info+1] = math.floor(distance).." studs"
+    end
+
+    if Config.Weapon then
+        local tool = char:FindFirstChildOfClass("Tool")
+        info[#info+1] = tool and tool.Name or "None"
+    end
+
+    if #info > 0 then
+        v.Text.Text = table.concat(info,"\n")
+        v.Text.Position = UDim2.fromOffset(
+            rp.X-100,
+            y-56
+        )
+        v.Text.Visible = true
+    end
+
+    if Config.Health then
+        local ratio = math.clamp(
+            h.Health/math.max(h.MaxHealth,1),0,1
+        )
+
+        v.HP.Position = UDim2.fromOffset(x-8,y)
+        v.HP.Size = UDim2.fromOffset(4,height)
+        v.HP.Visible = true
+
+        v.HPFill.Position = UDim2.fromScale(0,1-ratio)
+        v.HPFill.Size = UDim2.fromScale(1,ratio)
+        v.HPFill.BackgroundColor3 = Color3.fromRGB(
+            math.floor(255*(1-ratio)),
+            math.floor(255*ratio),
+            40
+        )
+    end
+end
+
+-- AIMBOT: HOLD RIGHT MOUSE
+local holding = false
+local locked = nil
+local aimTimer = 0
+
+local function getAimPart(char)
+    return char:FindFirstChild(Config.AimPart)
+        or char:FindFirstChild("Head")
+        or root(char)
+end
+
+local function canAim(char)
+    local h = humanoid(char)
+    local r = root(char)
+    local p = getAimPart(char)
+
+    if not h or h.Health <= 0 or not r or not p then
+        return nil
+    end
+
+    if (Camera.CFrame.Position-r.Position).Magnitude
+        > Config.AimDistance then
+        return nil
+    end
+
+    local screenPos, visible = project(p.Position)
+    if not visible then return nil end
+
+    local center = Camera.ViewportSize/2
+    local offset = (
+        screenPos-Vector2.new(center.X,center.Y)
+    ).Magnitude
+
+    if offset > Config.FOV then return nil end
+
+    if Config.VisibilityCheck then
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {
+            LP.Character
+        }
+
+        local origin = Camera.CFrame.Position
+        local hit = workspace:Raycast(
+            origin,
+            p.Position-origin,
+            params
+        )
+
+        if hit and not hit.Instance:IsDescendantOf(char) then
+            return nil
+        end
+    end
+
+    return p, offset
+end
+
+local function findTarget()
+    if Config.TargetLock and locked then
+        local p = canAim(locked)
+        if p then return p end
+    end
+
+    local best, bestDistance = nil, math.huge
+
+    for _, data in pairs(targets) do
+        local p, distance = canAim(data.Character)
+
+        if p and distance < bestDistance then
+            best = p
+            bestDistance = distance
+            locked = data.Character
+        end
+    end
+
+    if not best then locked = nil end
+    return best
+end
+
+UIS.InputBegan:Connect(function(input, processed)
+    if processed then return end
+
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        holding = true
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        holding = false
+        locked = nil
+    end
+end)
+
+-- FOV
+local fov = new("Frame",overlay,{
+    BackgroundTransparency = 1,
+    Visible = true
+})
+
+round(fov,999)
+
+new("UIStroke",fov,{
+    Color = Color3.fromRGB(160,100,255),
+    Thickness = 1.5
+})
+
+-- COMPACT MENU
+local menu = new("Frame",GUI,{
+    BackgroundColor3 = Color3.fromRGB(20,21,32),
+    BorderSizePixel = 0,
+    Position = UDim2.fromOffset(40,100),
+    Size = UDim2.fromOffset(290,360)
+})
+round(menu,10)
+
+new("UIStroke",menu,{
+    Color = Color3.fromRGB(145,90,255),
+    Thickness = 1
+})
+
+local title = new("TextLabel",menu,{
+    BackgroundTransparency = 1,
+    Text = "ESP + AIM | OPTIMIZED",
+    Font = Enum.Font.GothamBold,
+    TextSize = 15,
+    TextColor3 = Color3.new(1,1,1),
+    Size = UDim2.new(1,0,0,38)
+})
+
+local tabs = new("Frame",menu,{
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(8,40),
+    Size = UDim2.new(1,-16,0,30)
+})
+
+new("UIListLayout",tabs,{
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0,4)
+})
+
+local content = new("ScrollingFrame",menu,{
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    Position = UDim2.fromOffset(10,78),
+    Size = UDim2.new(1,-20,1,-88),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new()
+})
+
+local pages = {}
+
+local function page(name)
+    local p = new("Frame",content,{
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,-5,0,0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Visible = false
+    })
+
+    new("UIListLayout",p,{
+        Padding = UDim.new(0,5)
+    })
+
+    pages[name] = p
+    return p
+end
+
+local ESPPage = page("ESP")
+local AimPage = page("AIM")
+local VisualPage = page("VISUAL")
+
+local function button(parent,text,callback)
+    local b = new("TextButton",parent,{
+        BackgroundColor3 = Color3.fromRGB(38,39,55),
+        BorderSizePixel = 0,
+        Text = text,
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        Size = UDim2.new(1,-5,0,29)
+    })
+
+    round(b,6)
+    b.MouseButton1Click:Connect(function()
+        callback(b)
+    end)
+
+    return b
+end
+
+local function toggle(parent,name,key)
+    local function text()
+        return name.." : "..(Config[key] and "ON" or "OFF")
+    end
+
+    local b = button(parent,text(),function(self)
+        Config[key] = not Config[key]
+        self.Text = text()
+    end)
+
+    return b
+end
+
+local function number(parent,name,key,step,min,max)
+    button(parent,name.." : "..Config[key],function(self)
+        local value = Config[key]+step
+        if value > max then value = min end
+        Config[key] = math.round(value*100)/100
+        self.Text = name.." : "..Config[key]
+    end)
+end
+
+local function selectPage(name)
+    for n,p in pairs(pages) do
+        p.Visible = n == name
+    end
+    content.CanvasPosition = Vector2.zero
+end
+
+for _, name in ipairs({"ESP","AIM","VISUAL"}) do
+    local b = new("TextButton",tabs,{
+        BackgroundColor3 = Color3.fromRGB(46,38,70),
+        BorderSizePixel = 0,
+        Text = name,
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        Size = UDim2.fromOffset(86,28)
+    })
+
+    round(b,5)
+    b.MouseButton1Click:Connect(function()
+        selectPage(name)
+    end)
+end
+
+for _, item in ipairs({
+    {"ESP Master","ESP"},
+    {"2D Box","Box"},
+    {"Corner Box","CornerBox"},
+    {"3D Box","Box3D"},
+    {"Chams","Chams"},
+    {"Skeleton","Skeleton"},
+    {"Tracers","Tracers"},
+    {"Names","Names"},
+    {"Health","Health"},
+    {"Distance","Distance"},
+    {"Weapon","Weapon"},
+    {"Head Dot","HeadDot"},
+    {"Through Walls","ThroughWalls"}
+}) do
+    toggle(ESPPage,item[1],item[2])
+end
+
+number(ESPPage,"ESP Distance","MaxDistance",50,50,1000)
+
+-- No Aimbot toggle
+number(AimPage,"FOV","FOV",20,20,500)
+number(AimPage,"Smoothness","Smoothness",0.04,0.04,1)
+number(AimPage,"Prediction","Prediction",0.01,0,0.3)
+number(AimPage,"Aim Distance","AimDistance",25,25,500)
+
+toggle(AimPage,"FOV Visible","ShowFOV")
+toggle(AimPage,"Visibility Check","VisibilityCheck")
+toggle(AimPage,"Target Lock","TargetLock")
+
+button(AimPage,"Target : Head",function(self)
+    local parts = {"Head","UpperTorso","HumanoidRootPart"}
+    local i = table.find(parts,Config.AimPart) or 1
+    Config.AimPart = parts[i%#parts+1]
+    self.Text = "Target : "..Config.AimPart
+end)
+
+number(VisualPage,"ESP Update Interval",
+    "ESPInterval",0.01,0.02,0.1)
+
+local colors = {
+    Color3.fromRGB(255,65,90),
+    Color3.fromRGB(70,210,255),
+    Color3.fromRGB(90,255,120),
+    Color3.fromRGB(255,220,50),
+    Color3.fromRGB(185,100,255)
+}
+
+local colorIndex = 1
+
+button(VisualPage,"Change ESP Color",function()
+    colorIndex = colorIndex%#colors+1
+    Config.Color = colors[colorIndex]
+end)
+
+selectPage("ESP")
+
+-- RIGHT SHIFT MENU
+UIS.InputBegan:Connect(function(input,processed)
+    if processed then return end
+
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        menu.Visible = not menu.Visible
+    end
+end)
+
+-- DRAG WINDOW
+local dragging = false
+local dragStart
+local startPos
+
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = menu.Position
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and
+        input.UserInputType == Enum.UserInputType.MouseMovement then
+
+        local d = input.Position-dragStart
+
+        menu.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset+d.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset+d.Y
+        )
+    end
+end)
+
+-- OPTIMIZED UPDATE LOOP
+local espAccumulator = 0
+local aimAccumulator = 0
+local aimTarget = nil
+
+RunService:BindToRenderStep(
+    "OptimizedESP_Aim",
+    Enum.RenderPriority.Camera.Value+1,
+    function(dt)
+        Camera = workspace.CurrentCamera
+        if not Camera then return end
+
+        espAccumulator += dt
+
+        if espAccumulator >= Config.ESPInterval then
+            espAccumulator = 0
+
+            for id,data in pairs(targets) do
+                updateESP(id,data)
+            end
+        end
+
+        local diameter = Config.FOV*2
+
+        fov.Visible = Config.ShowFOV
+        fov.Size = UDim2.fromOffset(diameter,diameter)
+        fov.Position = UDim2.fromOffset(
+            Camera.ViewportSize.X/2-Config.FOV,
+            Camera.ViewportSize.Y/2-Config.FOV
+        )
+
+        if not holding then
+            aimTarget = nil
+            aimAccumulator = 0
+            return
+        end
+
+        aimAccumulator += dt
+
+        if aimAccumulator >= 1/30 then
+            aimAccumulator = 0
+            aimTarget = findTarget()
+        end
+
+        if aimTarget and aimTarget.Parent then
+            local prediction =
+                aimTarget.Position
+                + aimTarget.AssemblyLinearVelocity*Config.Prediction
+
+            local desired = CFrame.lookAt(
+                Camera.CFrame.Position,
+                prediction
+            )
+
+            local smooth = 1-math.pow(
+                1-math.clamp(Config.Smoothness,0.01,1),
+                dt*60
+            )
+
+            Camera.CFrame = Camera.CFrame:Lerp(
+                desired,
+                smooth
+            )
+        end
+    end
+)
+
+print("Optimized ESP + AIM loaded")
