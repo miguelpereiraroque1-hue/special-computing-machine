@@ -41,6 +41,12 @@ local Config = {
     AimPart = "Head",
     VisibilityCheck = true,
     TargetLock = true
+
+-- BOTÃO AIMBOT ON/OFF NO MENU
+Config.AimEnabled = false
+
+toggle(AimPage, "Aimbot", "AimEnabled")
+
 }
 
 local old = PG:FindFirstChild("OptimizedESP")
